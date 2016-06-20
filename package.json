@@ -1,0 +1,23 @@
+{
+  "name": "bluepencil",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bitemyapp/bluepencil.git"
+  },
+  "keywords": [
+    "react",
+    "draftjs"
+  ],
+  "author": "Chris Allen",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/bitemyapp/bluepencil/issues"
+  },
+  "homepage": "https://github.com/bitemyapp/bluepencil#readme"
+}
