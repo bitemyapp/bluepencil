@@ -3,9 +3,6 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bitemyapp/bluepencil.git"
@@ -19,5 +16,21 @@
   "bugs": {
     "url": "https://github.com/bitemyapp/bluepencil/issues"
   },
-  "homepage": "https://github.com/bitemyapp/bluepencil#readme"
+  "homepage": "https://github.com/bitemyapp/bluepencil#readme",
+  "babel": {
+    "presets": [
+      "es2015",
+      "react"
+    ]
+  },
+  "dependencies": {
+    "babel": "^6.5.2",
+    "babel-core": "^6.9.1",
+    "babel-preset-es2015": "^6.9.0",
+    "babel-preset-react": "^6.5.0",
+    "draft-js": "^0.7.0",
+    "draft-js-export-html": "^0.3.0",
+    "react": "^15.1.0",
+    "react-dom": "^15.1.0"
+  }
 }
