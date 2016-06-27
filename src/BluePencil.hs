@@ -4,12 +4,18 @@
 
 module BluePencil where
 
+import Control.Monad (foldM)
 import Data.Aeson
 import qualified Data.BufferBuilder as BB
 import qualified Data.ByteString as BS
+import Data.List (sortBy)
+import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.Semigroup
 import Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 import GHC.Natural
@@ -188,6 +194,14 @@ import GHC.Natural
 -- }
 -- |]
 
+-- <ol>
+--   <li>First List Item</li>
+--   <li><a href="http://www.google.com">Google</a></li>
+-- </ol>
+
+-- {"entityMap":{"0":{"type":"LINK","mutability":"MUTABLE","data":{"url":"http://www.google.com"}}},"blocks":[{"key":"296mn","text":"First List Item","type":"ordered-list-item","depth":0,"inlineStyleRanges":[],"entityRanges":[]},{"key":"4kk8e","text":"Google","type":"ordered-list-item","depth":0,"inlineStyleRanges":[],"entityRanges":[{"offset":0,"length":6,"key":0}]}]}
+
+
 data BlockType =
     Unstyled
   | UnorderedListItem
@@ -217,7 +231,7 @@ data Style =
   | Strikethrough
   -- A Header can be styled like code, for example
   | CodeStyle
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 instance FromJSON Style where
   parseJSON (String "BOLD") = return Bold
@@ -334,19 +348,104 @@ instance FromJSON ContentRaw where
                                <*> o .: "blocks"
 
 
-exampleBlock = Block {blockKey = "3vpca",
-                      blockText = "bold italic bolditalic",
-                      blockType = Unstyled,
-                      blockDepth = 0,
-                      inlineStyleRanges = V.fromList
-                                          [StyleRange {styleOffset = 0, styleLength = 4, style = Bold},
-                                           StyleRange {styleOffset = 12, styleLength = 10, style = Bold},
-                                           StyleRange {styleOffset = 5, styleLength = 6, style = Italic},
-                                           StyleRange {styleOffset = 12, styleLength = 10, style = Italic}],
-                      entityRanges = V.fromList []}
+-- ContentRaw / Block to HTML conversion
 
-blockToHtml :: Map Text Entity -> Block -> BS.ByteString
+exampleBlock =
+  Block {blockKey = "3vpca",
+         blockText = "bold italic bolditalic",
+         blockType = Unstyled,
+         blockDepth = 0, -- almost exclusively for lists at the moment
+         inlineStyleRanges = V.fromList
+                              [StyleRange {styleOffset = 0, styleLength = 4, style = Bold},
+                               StyleRange {styleOffset = 12, styleLength = 10, style = Bold},
+                               StyleRange {styleOffset = 5, styleLength = 6, style = Italic},
+                               StyleRange {styleOffset = 12, styleLength = 10, style = Italic}],
+         entityRanges = V.fromList []}
+
+data TagAction =
+    Open
+  | Close
+  deriving (Eq, Show)
+
+data BufferAction =
+  BufferAction { actionStyle :: Style
+               , openOrClose :: TagAction }
+  deriving (Eq, Show)
+
+updateMap :: (Ord k) => k -> BufferAction -> Map k (NE.NonEmpty BufferAction) -> Map k (NE.NonEmpty BufferAction)
+updateMap k v m = if M.member k m
+                  then M.adjust (<> (singletonNE v)) k m
+                  else M.insert k (singletonNE v) m
+
+singletonNE v = v NE.:| []
+
+type ActionsMap = M.Map Natural (NE.NonEmpty BufferAction)
+
+injectStyleRange :: StyleRange -> ActionsMap -> ActionsMap
+injectStyleRange StyleRange{..} m = withClose
+  where start = styleOffset
+        terminate = styleOffset + styleLength
+        withOpen = updateMap start (BufferAction style Open) m
+        withClose = updateMap terminate (BufferAction style Open) withOpen
+
+buildIndices :: Block -> ActionsMap
+buildIndices Block{..} =
+  foldr injectStyleRange mempty inlineStyleRanges
+
+baToTag :: BufferAction -> BS.ByteString
+baToTag (BufferAction s ta) = styleToTag ta s
+
+styleToTag :: TagAction -> Style -> BS.ByteString
+styleToTag Open Bold = "<b>"
+styleToTag Close Bold = "</b>"
+styleToTag Open Italic = "<em>"
+styleToTag Close Italic = "</em>"
+styleToTag Open Strikethrough = "<del>"
+styleToTag Close Strikethrough = "</del>"
+styleToTag Open CodeStyle = "<code>"
+styleToTag Close CodeStyle = "</code>"
+
+-- accumulateFromBlock :: ActionsMap -> Text -> BB.BufferBuilder ()
+-- accumulateFromBlock = undefined
+
+-- blockToHtml :: Block -> BS.ByteString
 blockToHtml m Block{..} = undefined
 
 contentToHtml :: ContentRaw -> BS.ByteString
 contentToHtml = undefined
+
+testBB = BB.runBufferBuilder $ do
+  BB.appendBS "http"
+  BB.appendChar8 ':'
+  BB.appendBS "//"
+
+-- indexMatchesStyleRange n StyleRange{..} =
+--   (n' == styleOffset, n' == (styleOffset + styleLength))
+--   where n' = fromInteger (toInteger n)
+
+-- eitherTrue :: (Bool, Bool) -> Bool
+-- eitherTrue (True, _) = True
+-- eitherTrue (_, True) = True
+-- eitherTrue _ = False
+
+-- styleRangeToByteString :: Int -> StyleRange -> BS.ByteString
+-- styleRangeToByteString n sr@StyleRange{..} =
+--   case indexMatchesStyleRange n sr of
+--     (True, _) -> styleToTag Open style
+--     (_, True) -> styleToTag Close style
+--     (False, False) -> ""
+  
+
+-- addIfIndexMatches :: Block -> Int -> StyleRange -> [StyleRange]
+-- addIfIndexMatches Block{..} n StyleRange{..} xs =
+
+-- stylesMatchingIndex :: Block -> Int -> [StyleRange]
+-- stylesMatchingIndex = undefined
+
+-- blockText = "bold italic bolditalic",
+-- addAtIndex :: Block -> Int -> BB.BufferBuilder ()
+-- addAtIndex Block{..} n = undefined
+--   where curChar = T.index blockText n
+--         sortByStyle s s' = compare (style s) (style s')
+--         styleRangeList = sortBy sortByStyle $ V.toList inlineStyleRanges
+        -- matchingIndex sr = (eitherTrue . indexMatchesStyleRange n sr)
