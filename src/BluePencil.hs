@@ -4,7 +4,7 @@
 
 module BluePencil where
 
-import Control.Monad (foldM)
+import Control.Monad (forM_)
 import Data.Aeson
 import qualified Data.BufferBuilder as BB
 import qualified Data.ByteString as BS
@@ -12,6 +12,7 @@ import Data.List (sortBy)
 import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.MonoTraversable (omapM_, ofoldlM)
 import Data.Semigroup
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -19,188 +20,10 @@ import qualified Data.Text.Encoding as TE
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 import GHC.Natural
-
--- import qualified Network.HTTP.Types as HTTP
-
--- ""
--- {"entityMap":{},"blocks":[{"key":"6s9ko","text":"","type":"unstyled","depth":0,"inlineStyleRanges":[],"entityRanges":[]}]}
--- <p><br></p>
-
--- emptyJSON = [r|
--- {
---   "entityMap":{
---   },
---   "blocks":[
---     {
---       "key":"6s9ko",
---       "text":"",
---       "type":"unstyled",
---       "depth":0,
---       "inlineStyleRanges":[],
---       "entityRanges":[]
---     }
---   ]
--- }
--- |]
-
--- exampleJSON = [r|
--- {
---     "entityMap": {
---         "0": {
---             "type": "LINK",
---             "mutability": "MUTABLE",
---             "data": {
---                 "url": "http://bitemyapp.com"
---             }
---         }
---     },
---     "blocks": [
---         {
---             "key": "3vpca",
---             "text": "bold italic bolditalic",
---             "type": "unstyled",
---             "depth": 0,
---             "inlineStyleRanges": [
---                 {
---                     "offset": 0,
---                     "length": 4,
---                     "style": "BOLD"
---                 },
---                 {
---                     "offset": 12,
---                     "length": 10,
---                     "style": "BOLD"
---                 },
---                 {
---                     "offset": 5,
---                     "length": 6,
---                     "style": "ITALIC"
---                 },
---                 {
---                     "offset": 12,
---                     "length": 10,
---                     "style": "ITALIC"
---                 }
---             ],
---             "entityRanges": []
---         },
---         {
---             "key": "3916r",
---             "text": "strikethrough",
---             "type": "unstyled",
---             "depth": 0,
---             "inlineStyleRanges": [
---                 {
---                     "offset": 0,
---                     "length": 13,
---                     "style": "STRIKETHROUGH"
---                 }
---             ],
---             "entityRanges": []
---         },
---         {
---             "key": "4o5l0",
---             "text": "code example",
---             "type": "unstyled",
---             "depth": 0,
---             "inlineStyleRanges": [
---                 {
---                     "offset": 0,
---                     "length": 12,
---                     "style": "CODE"
---                 }
---             ],
---             "entityRanges": []
---         },
---         {
---             "key": "bqhv1",
---             "text": "unordered list item",
---             "type": "unordered-list-item",
---             "depth": 0,
---             "inlineStyleRanges": [],
---             "entityRanges": []
---         },
---         {
---             "key": "70a5r",
---             "text": "ordered list item",
---             "type": "ordered-list-item",
---             "depth": 0,
---             "inlineStyleRanges": [],
---             "entityRanges": []
---         },
---         {
---             "key": "e93jn",
---             "text": "blockquote",
---             "type": "blockquote",
---             "depth": 0,
---             "inlineStyleRanges": [],
---             "entityRanges": []
---         },
---         {
---             "key": "elsqh",
---             "text": "http://bitemyapp.com",
---             "type": "unstyled",
---             "depth": 0,
---             "inlineStyleRanges": [],
---             "entityRanges": [
---                 {
---                     "offset": 0,
---                     "length": 20,
---                     "key": 0
---                 }
---             ]
---         },
---         {
---             "key": "7te3b",
---             "text": "Heading large",
---             "type": "header-one",
---             "depth": 0,
---             "inlineStyleRanges": [],
---             "entityRanges": []
---         },
---         {
---             "key": "1jm2o",
---             "text": "Heading medium",
---             "type": "header-two",
---             "depth": 0,
---             "inlineStyleRanges": [],
---             "entityRanges": []
---         },
---         {
---             "key": "5r31e",
---             "text": "Heading small",
---             "type": "header-three",
---             "depth": 0,
---             "inlineStyleRanges": [],
---             "entityRanges": []
---         },
---         {
---             "key": "5nagf",
---             "text": "Code block",
---             "type": "code-block",
---             "depth": 0,
---             "inlineStyleRanges": [],
---             "entityRanges": []
---         },
---         {
---             "key": "cuil",
---             "text": "",
---             "type": "unstyled",
---             "depth": 0,
---             "inlineStyleRanges": [],
---             "entityRanges": []
---         }
---     ]
--- }
--- |]
-
--- <ol>
---   <li>First List Item</li>
---   <li><a href="http://www.google.com">Google</a></li>
--- </ol>
-
--- {"entityMap":{"0":{"type":"LINK","mutability":"MUTABLE","data":{"url":"http://www.google.com"}}},"blocks":[{"key":"296mn","text":"First List Item","type":"ordered-list-item","depth":0,"inlineStyleRanges":[],"entityRanges":[]},{"key":"4kk8e","text":"Google","type":"ordered-list-item","depth":0,"inlineStyleRanges":[],"entityRanges":[{"offset":0,"length":6,"key":0}]}]}
-
+import Text.Blaze.Html5 (Html)
+import qualified Text.Blaze.Html5 as H
+import qualified Text.Blaze.Html5.Attributes as A
+import Text.Blaze.Html.Renderer.Utf8 (renderHtml)
 
 data BlockType =
     Unstyled
@@ -289,7 +112,8 @@ instance FromJSON Block where
 
 
 data EntityType =
-  Link
+    Link
+  | Image
   deriving (Eq, Show)
 
 instance FromJSON EntityType where
@@ -348,8 +172,6 @@ instance FromJSON ContentRaw where
                                <*> o .: "blocks"
 
 
--- ContentRaw / Block to HTML conversion
-
 exampleBlock =
   Block {blockKey = "3vpca",
          blockText = "bold italic bolditalic",
@@ -362,62 +184,135 @@ exampleBlock =
                                StyleRange {styleOffset = 12, styleLength = 10, style = Italic}],
          entityRanges = V.fromList []}
 
-data TagAction =
-    Open
-  | Close
-  deriving (Eq, Show)
+styleRangeToHtml :: Text -> StyleRange -> (Natural, Html)
+styleRangeToHtml t StyleRange{..} = undefined
+  -- where
+  --   sortByStyle s s' = compare (style s) (style s')
+  --   sortedList = sortBy sortByStyle $ V.toList inlineStyleRanges
 
-data BufferAction =
-  BufferAction { actionStyle :: Style
-               , openOrClose :: TagAction }
-  deriving (Eq, Show)
+-- {"entityMap":{},"blocks":[{"key":"8n4dj","text":"bold bolditalic italic","type":"unstyled","depth":0,
+-- "inlineStyleRanges":[{"offset":0,"length":16,"style":"BOLD"},
+--                      {"offset":5,"length":17,"style":"ITALIC"}],"entityRanges":[]}]}
+-- <p><strong>bold </strong><em><strong>bolditalic </strong></em><em>italic</em></p>
 
-updateMap :: (Ord k) => k -> BufferAction -> Map k (NE.NonEmpty BufferAction) -> Map k (NE.NonEmpty BufferAction)
-updateMap k v m = if M.member k m
-                  then M.adjust (<> (singletonNE v)) k m
-                  else M.insert k (singletonNE v) m
 
-singletonNE v = v NE.:| []
+-- ofoldlM (\n c -> BB.appendChar8 c >> return (n+1)) 0 ("Blah" :: Text)
 
-type ActionsMap = M.Map Natural (NE.NonEmpty BufferAction)
+-- Prelude> renderHtml $ H.b "bold" >> H.em "italic" >> H.b (H.em "bolditalic")
+-- "<b>bold</b><em>italic</em><b><em>bolditalic</em></b>"
+-- Prelude> renderHtml $  (H.b $ H.text "bold " >> H.i "bolditalic") >> H.i " italic"
+-- "<b>bold <i>bolditalic</i></b><i> italic</i>"
 
-injectStyleRange :: StyleRange -> ActionsMap -> ActionsMap
-injectStyleRange StyleRange{..} m = withClose
-  where start = styleOffset
-        terminate = styleOffset + styleLength
-        withOpen = updateMap start (BufferAction style Open) m
-        withClose = updateMap terminate (BufferAction style Open) withOpen
+-- {"entityMap":{},"blocks":[{"key":"8n4dj","text":"All Bold but this is Italic","type":"unstyled","depth":0,"inlineStyleRanges":[{"offset":0,"length":27,"style":"BOLD"},{"offset":13,"length":14,"style":"ITALIC"}],"entityRanges":[]}]}
+-- <p><strong>All Bold but </strong><em><strong>this is Italic</strong></em></p>
 
-buildIndices :: Block -> ActionsMap
-buildIndices Block{..} =
-  foldr injectStyleRange mempty inlineStyleRanges
+codeBlock =
+  Block {blockKey = "3vpca",
+         blockText = "bold italic bolditalic",
+         blockType = CodeBlock,
+         blockDepth = 0, -- almost exclusively for lists at the moment
+         inlineStyleRanges = V.fromList
+                              [StyleRange {styleOffset = 0, styleLength = 4, style = Bold},
+                               StyleRange {styleOffset = 12, styleLength = 10, style = Bold},
+                               StyleRange {styleOffset = 5, styleLength = 6, style = Italic},
+                               StyleRange {styleOffset = 12, styleLength = 10, style = Italic}],
+         entityRanges = V.fromList []}
 
-baToTag :: BufferAction -> BS.ByteString
-baToTag (BufferAction s ta) = styleToTag ta s
+htmlBlock :: Block -> Html
+htmlBlock Block{..} = wrapBlock blockType (H.text blockText)
 
-styleToTag :: TagAction -> Style -> BS.ByteString
-styleToTag Open Bold = "<b>"
-styleToTag Close Bold = "</b>"
-styleToTag Open Italic = "<em>"
-styleToTag Close Italic = "</em>"
-styleToTag Open Strikethrough = "<del>"
-styleToTag Close Strikethrough = "</del>"
-styleToTag Open CodeStyle = "<code>"
-styleToTag Close CodeStyle = "</code>"
+wrapBlock :: BlockType -> Html -> Html
+wrapBlock Unstyled content = H.p content
+wrapBlock UnorderedListItem content = H.li content
+wrapBlock OrderedListItem content = H.li content
+wrapBlock Blockquote content = H.blockquote content
+wrapBlock HeaderOne content = H.h1 content
+wrapBlock HeaderTwo content = H.h2 content
+wrapBlock HeaderThree content = H.h3 content
+wrapBlock CodeBlock content = H.pre (H.code content)
+
+-- data TagAction =
+--     Open
+--   | Close
+--   deriving (Eq, Show)
+
+-- data BufferAction =
+--   BufferAction { actionStyle :: Style
+--                , openOrClose :: TagAction }
+--   deriving (Eq, Show)
+
+-- updateMap :: (Ord k) => k -> BufferAction -> Map k (NE.NonEmpty BufferAction) -> Map k (NE.NonEmpty BufferAction)
+-- updateMap k v m = if M.member k m
+--                   then M.adjust (<> (singletonNE v)) k m
+--                   else M.insert k (singletonNE v) m
+
+-- singletonNE v = v NE.:| []
+
+-- type ActionsMap = M.Map Natural (NE.NonEmpty BufferAction)
+
+-- injectStyleRange :: StyleRange -> ActionsMap -> ActionsMap
+-- injectStyleRange StyleRange{..} m = withClose
+--   where start = styleOffset
+--         terminate = styleOffset + styleLength
+--         withOpen = updateMap start (BufferAction style Open) m
+--         withClose = updateMap terminate (BufferAction style Open) withOpen
+
+-- buildIndices :: Block -> ActionsMap
+-- buildIndices Block{..} =
+--   foldr injectStyleRange mempty inlineStyleRanges
+
+-- baToTag :: BufferAction -> BS.ByteString
+-- baToTag (BufferAction s ta) = styleToTag ta s
+
+-- styleToTag :: TagAction -> Style -> BS.ByteString
+-- styleToTag Open Bold = "<b>"
+-- styleToTag Close Bold = "</b>"
+-- styleToTag Open Italic = "<em>"
+-- styleToTag Close Italic = "</em>"
+-- styleToTag Open Strikethrough = "<del>"
+-- styleToTag Close Strikethrough = "</del>"
+-- styleToTag Open CodeStyle = "<pre><code>"
+-- styleToTag Close CodeStyle = "</code></pre>"
 
 -- accumulateFromBlock :: ActionsMap -> Text -> BB.BufferBuilder ()
 -- accumulateFromBlock = undefined
 
--- blockToHtml :: Block -> BS.ByteString
-blockToHtml m Block{..} = undefined
+-- blockTypeTags :: BlockType -> [(BS.ByteString, BS.ByteString)]
+-- blockTypeTags Unstyled = ["<p>"]
+-- blockTypeTags UnorderedListItem = ["<li>"]
+-- blockTypeTags OrderedListItem = ["<li>"]
+-- blockTypeTags Blockquote = ["<blockquote>"]
+-- blockTypeTags HeaderOne = ["<h1>"]
+-- blockTypeTags HeaderTwo = ["<h2>"]
+-- blockTypeTags HeaderThree = ["<h3>"]
+-- blockTypeTags CodeBlock = ["<code>", "<pre>"]
+-- blockTypeTags Unstyled = [("<p>", "</p>")]
 
-contentToHtml :: ContentRaw -> BS.ByteString
-contentToHtml = undefined
+-- closeTag :: BS.ByteString -> BS.ByteString
+-- closeTag "<p>" = "</p>"
 
-testBB = BB.runBufferBuilder $ do
-  BB.appendBS "http"
-  BB.appendChar8 ':'
-  BB.appendBS "//"
+-- wrapContent :: BS.ByteString -> [BS.ByteString] -> BB.BufferBuilder ()
+-- wrapContent wrapped xs = do
+--   BB.appendBS begin
+--   BB.appendBS wrapped
+--   BB.appendBS end
+
+-- blockToHtml :: ActionsMap -> Block -> BB.BufferBuilder ()
+-- blockToHtml m Block{..} = do
+--   let wrapperTags = blockTypeTags blockType
+--   _ <- traverse (wrapContent (TE.encodeUtf8 blockText)) wrapperTags
+--   return ()
+
+-- contentToHtml :: ContentRaw -> BS.ByteString
+-- contentToHtml = undefined
+
+-- testBB = BB.runBufferBuilder $ do
+--   BB.appendBS "http"
+--   BB.appendChar8 ':'
+--   BB.appendBS "//"
+
+-- {"entityMap":{"0":{"type":"LINK","mutability":"MUTABLE","data":{"url":"http://www.google.com"}}},"blocks":[{"key":"8n4dj","text":"Italic BoldItalic Google","type":"blockquote","depth":0,"inlineStyleRanges":[{"offset":0,"length":18,"style":"ITALIC"},{"offset":7,"length":11,"style":"BOLD"}],"entityRanges":[{"offset":18,"length":6,"key":0}]}]}
+-- <blockquote><em>Italic </em><em><strong>BoldItalic </strong></em><a href="http://www.google.com">Google</a></blockquote>
 
 -- indexMatchesStyleRange n StyleRange{..} =
 --   (n' == styleOffset, n' == (styleOffset + styleLength))
@@ -448,4 +343,4 @@ testBB = BB.runBufferBuilder $ do
 --   where curChar = T.index blockText n
 --         sortByStyle s s' = compare (style s) (style s')
 --         styleRangeList = sortBy sortByStyle $ V.toList inlineStyleRanges
-        -- matchingIndex sr = (eitherTrue . indexMatchesStyleRange n sr)
+--         matchingIndex sr = (eitherTrue . indexMatchesStyleRange n sr)
