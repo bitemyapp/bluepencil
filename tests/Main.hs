@@ -213,3 +213,39 @@ main = hspec $ do
       decode emptyJSON `shouldBe` Just emptyContent
     it "Example JSON should produce the example content" $ do
       decode exampleJSON `shouldBe` Just exampleContent
+
+-- # Plain text
+-- {"entityMap":{},"blocks":[{"key":"33nh8","text":"a","type":"unstyled","depth":0,"inlineStyleRanges":[],"entityRanges":[]}]}
+-- <p>a</p>
+
+-- # Single inline style
+-- {"entityMap":{},"blocks":[{"key":"99n0j","text":"asdf","type":"unstyled","depth":0,"inlineStyleRanges":[{"offset":3,"length":1,"style":"BOLD"}],"entityRanges":[]}]}
+-- <p>asd<strong>f</strong></p>
+
+-- # Nested inline styles
+-- {"entityMap":{},"blocks":[{"key":"9nc73","text":"BoldItalic","type":"unstyled","depth":0,"inlineStyleRanges":[{"offset":0,"length":10,"style":"BOLD"},{"offset":0,"length":10,"style":"ITALIC"}],"entityRanges":[]}]}
+-- <p><em><strong>BoldItalic</strong></em></p>
+
+-- # Adjacent inline styles
+-- {"entityMap":{},"blocks":[{"key":"9nc73","text":"BoldItalic","type":"unstyled","depth":0,"inlineStyleRanges":[{"offset":4,"length":6,"style":"BOLD"},{"offset":0,"length":4,"style":"ITALIC"}],"entityRanges":[]}]}
+-- <p><em>Bold</em><strong>Italic</strong></p>
+
+-- # Entity
+-- {"entityMap":{"0":{"type":"LINK","mutability":"MUTABLE","data":{"url":"/","rel":null,"title":"hi","extra":"foo"}}},"blocks":[{"key":"8r91j","text":"a","type":"unstyled","depth":0,"inlineStyleRanges":[{"offset":0,"length":1,"style":"ITALIC"}],"entityRanges":[{"offset":0,"length":1,"key":0}]}]}
+-- <p><a href="/" title="hi"><em>a</em></a></p>
+
+-- # Entity with data-*
+-- {"entityMap":{"0":{"type":"LINK","mutability":"MUTABLE","data":{"url":"/","rel":null,"title":"hi","extra":"foo","data-id":42,"data-mutability":"mutable","data-False":"bad","data-":"no"}}},"blocks":[{"key":"8r91j","text":"a","type":"unstyled","depth":0,"inlineStyleRanges":[{"offset":0,"length":1,"style":"ITALIC"}],"entityRanges":[{"offset":0,"length":1,"key":0}]}]}
+-- <p><a href="/" title="hi" data-id="42" data-mutability="mutable"><em>a</em></a></p>
+
+-- # Entity with inline style
+-- {"entityMap":{"0":{"type":"LINK","mutability":"MUTABLE","data":{"url":"/"}}},"blocks":[{"key":"8r91j","text":"a","type":"unstyled","depth":0,"inlineStyleRanges":[{"offset":0,"length":1,"style":"ITALIC"}],"entityRanges":[{"offset":0,"length":1,"key":0}]}]}
+-- <p><a href="/"><em>a</em></a></p>
+
+-- # Ordered list
+-- {"entityMap":{},"blocks":[{"key":"33nh8","text":"An ordered list:","type":"unstyled","depth":0,"inlineStyleRanges":[],"entityRanges":[]},{"key":"8kinl","text":"One","type":"ordered-list-item","depth":0,"inlineStyleRanges":[],"entityRanges":[]},{"key":"ekll4","text":"Two","type":"ordered-list-item","depth":0,"inlineStyleRanges":[],"entityRanges":[]}]}
+-- <p>An ordered list:</p>
+-- <ol>
+--   <li>One</li>
+--   <li>Two</li>
+-- </ol>
