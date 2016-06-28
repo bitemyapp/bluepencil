@@ -201,192 +201,223 @@ import GHC.Natural
 
 -- {"entityMap":{"0":{"type":"LINK","mutability":"MUTABLE","data":{"url":"http://www.google.com"}}},"blocks":[{"key":"296mn","text":"First List Item","type":"ordered-list-item","depth":0,"inlineStyleRanges":[],"entityRanges":[]},{"key":"4kk8e","text":"Google","type":"ordered-list-item","depth":0,"inlineStyleRanges":[],"entityRanges":[{"offset":0,"length":6,"key":0}]}]}
 
--- instance FromJSON Style where
---   parseJSON (String "BOLD") = return Bold
---   parseJSON (String "ITALIC") = return Italic
---   parseJSON (String "STRIKETHROUGH") = return Strikethrough
---   parseJSON (String "CODE") = return CodeStyle
---   parseJSON _ = fail "Expected one of several possible strings for BluePencil.Style"
+
+data BlockType =
+    Unstyled
+  | UnorderedListItem
+  | OrderedListItem
+  | Blockquote
+  | HeaderOne
+  | HeaderTwo
+  | HeaderThree
+  | CodeBlock
+  deriving (Eq, Show)
+
+instance FromJSON BlockType where
+  parseJSON (String "unstyled") = return Unstyled
+  parseJSON (String "unordered-list-item") = return UnorderedListItem
+  parseJSON (String "ordered-list-item") = return OrderedListItem
+  parseJSON (String "blockquote") = return Blockquote
+  parseJSON (String "header-one") = return HeaderOne
+  parseJSON (String "header-two") = return HeaderTwo
+  parseJSON (String "header-three") = return HeaderThree
+  parseJSON (String "code-block") = return CodeBlock
+  parseJSON _ = fail "Expected one of several possible strings for BluePencil.BlockType"
 
 
--- data StyleRange =
---   StyleRange {
---     styleOffset :: Natural
---   , styleLength :: Natural
---   , style :: Style
---   } deriving (Eq, Show)
+data Style =
+    Bold
+  | Italic
+  | Strikethrough
+  -- A Header can be styled like code, for example
+  | CodeStyle
+  deriving (Eq, Ord, Show)
 
--- instance FromJSON StyleRange where
---   parseJSON = withObject "StyleRange" parse
---     where parse o = StyleRange <$> o .: "offset"
---                                <*> o .: "length"
---                                <*> o .: "style"
-
--- data EntityRange =
---   EntityRange {
---     entityOffset :: Natural
---   , entityLength :: Natural
---   , entityKey :: Natural
---   } deriving (Eq, Show)
-
--- instance FromJSON EntityRange where
---   parseJSON = withObject "EntityRange" parse
---     where parse o = EntityRange <$> o .: "offset"
---                                 <*> o .: "length"
---                                 <*> o .: "key"
+instance FromJSON Style where
+  parseJSON (String "BOLD") = return Bold
+  parseJSON (String "ITALIC") = return Italic
+  parseJSON (String "STRIKETHROUGH") = return Strikethrough
+  parseJSON (String "CODE") = return CodeStyle
+  parseJSON _ = fail "Expected one of several possible strings for BluePencil.Style"
 
 
--- data Block =
---   Block {
---     blockKey :: Text
---   , blockText :: Text
---   , blockType :: BlockType
---   , blockDepth :: Natural
---   , inlineStyleRanges :: Vector StyleRange
---   , entityRanges :: Vector EntityRange
---   } deriving (Eq, Show)
+data StyleRange =
+  StyleRange {
+    styleOffset :: Natural
+  , styleLength :: Natural
+  , style :: Style
+  } deriving (Eq, Show)
 
--- instance FromJSON Block where
---   parseJSON = withObject "Block" parse
---     where parse o = Block <$> o .: "key"
---                           <*> o .: "text"
---                           <*> o .: "type"
---                           <*> o .: "depth"
---                           <*> o .: "inlineStyleRanges"
---                           <*> o .: "entityRanges"
+instance FromJSON StyleRange where
+  parseJSON = withObject "StyleRange" parse
+    where parse o = StyleRange <$> o .: "offset"
+                               <*> o .: "length"
+                               <*> o .: "style"
 
+data EntityRange =
+  EntityRange {
+    entityOffset :: Natural
+  , entityLength :: Natural
+  , entityKey :: Natural
+  } deriving (Eq, Show)
 
--- data EntityType =
---     Link
---   | Image
---   deriving (Eq, Show)
-
--- instance FromJSON EntityType where
---   parseJSON = withText "EntityType" parse
---     where parse "LINK" = return Link
---           parse _ = fail "Expected a String \"LINK\" or \"IMAGE\" for BluePencil.EntityType"
+instance FromJSON EntityRange where
+  parseJSON = withObject "EntityRange" parse
+    where parse o = EntityRange <$> o .: "offset"
+                                <*> o .: "length"
+                                <*> o .: "key"
 
 
--- data EntityData =
---   EntityData { entityDataUrl :: Text }
---   deriving (Eq, Show)
+data Block =
+  Block {
+    blockKey :: Text
+  , blockText :: Text
+  , blockType :: BlockType
+  , blockDepth :: Natural
+  , inlineStyleRanges :: Vector StyleRange
+  , entityRanges :: Vector EntityRange
+  } deriving (Eq, Show)
 
--- instance FromJSON EntityData where
---   parseJSON = withObject "EntityData" parse
---     where parse o = EntityData <$> o .: "url"
+instance FromJSON Block where
+  parseJSON = withObject "Block" parse
+    where parse o = Block <$> o .: "key"
+                          <*> o .: "text"
+                          <*> o .: "type"
+                          <*> o .: "depth"
+                          <*> o .: "inlineStyleRanges"
+                          <*> o .: "entityRanges"
 
 
--- data Mutability =
---     Mutable
---   | Immutable
---   deriving (Eq, Show)
+data EntityType =
+  Link
+  deriving (Eq, Show)
 
--- instance FromJSON Mutability where
---   parseJSON = withText "Mutability" parse
---     where parse "MUTABLE" = return Mutable
---           parse "IMMUTABLE" = return Immutable
---           parse _ = fail "Expected MUTABLE or IMMUTABLE for BluePencil.Mutability"
+instance FromJSON EntityType where
+  parseJSON = withText "EntityType" parse
+    where parse "LINK" = return Link
+          parse _ = fail "Expected a String \"LINK\" for BluePencil.EntityType"
 
 
--- data Entity =
---   Entity {
---     entityType :: EntityType
---   , entityMutability :: Mutability
---   , entityData :: EntityData
---   } deriving (Eq, Show)
+data EntityData =
+  EntityData { entityDataUrl :: Text }
+  deriving (Eq, Show)
 
--- instance FromJSON Entity where
---   parseJSON = withObject "Entity" parse
---     where parse o = Entity <$> o .: "type"
---                            <*> o .: "mutability"
---                            <*> o .: "data"
+instance FromJSON EntityData where
+  parseJSON = withObject "EntityData" parse
+    where parse o = EntityData <$> o .: "url"
 
--- data ContentRaw =
---   ContentRaw {
---     entityMap :: Map Text Entity
---   , blocks :: Vector Block
---   } deriving (Eq, Show)
 
--- makeEmptyContent :: Text -> ContentRaw
--- makeEmptyContent initialBlockKey =
---   ContentRaw M.empty (V.fromList [Block initialBlockKey "" Unstyled 0 (V.fromList []) (V.fromList [])])
+data Mutability =
+    Mutable
+  | Immutable
+  deriving (Eq, Show)
 
--- instance FromJSON ContentRaw where
---   parseJSON = withObject "ContentRaw" parse
---     where parse o = ContentRaw <$> o .: "entityMap"
---                                <*> o .: "blocks"
+instance FromJSON Mutability where
+  parseJSON = withText "Mutability" parse
+    where parse "MUTABLE" = return Mutable
+          parse "IMMUTABLE" = return Immutable
+          parse _ = fail "Expected MUTABLE or IMMUTABLE for BluePencil.Mutability"
+
+
+data Entity =
+  Entity {
+    entityType :: EntityType
+  , entityMutability :: Mutability
+  , entityData :: EntityData
+  } deriving (Eq, Show)
+
+instance FromJSON Entity where
+  parseJSON = withObject "Entity" parse
+    where parse o = Entity <$> o .: "type"
+                           <*> o .: "mutability"
+                           <*> o .: "data"
+
+data ContentRaw =
+  ContentRaw {
+    entityMap :: Map Text Entity
+  , blocks :: Vector Block
+  } deriving (Eq, Show)
+
+makeEmptyContent :: Text -> ContentRaw
+makeEmptyContent initialBlockKey =
+  ContentRaw M.empty (V.fromList [Block initialBlockKey "" Unstyled 0 (V.fromList []) (V.fromList [])])
+
+instance FromJSON ContentRaw where
+  parseJSON = withObject "ContentRaw" parse
+    where parse o = ContentRaw <$> o .: "entityMap"
+                               <*> o .: "blocks"
 
 
 -- ContentRaw / Block to HTML conversion
 
--- exampleBlock =
---   Block {blockKey = "3vpca",
---          blockText = "bold italic bolditalic",
---          blockType = Unstyled,
---          blockDepth = 0, -- almost exclusively for lists at the moment
---          inlineStyleRanges = V.fromList
---                               [StyleRange {styleOffset = 0, styleLength = 4, style = Bold},
---                                StyleRange {styleOffset = 12, styleLength = 10, style = Bold},
---                                StyleRange {styleOffset = 5, styleLength = 6, style = Italic},
---                                StyleRange {styleOffset = 12, styleLength = 10, style = Italic}],
---          entityRanges = V.fromList []}
+exampleBlock =
+  Block {blockKey = "3vpca",
+         blockText = "bold italic bolditalic",
+         blockType = Unstyled,
+         blockDepth = 0, -- almost exclusively for lists at the moment
+         inlineStyleRanges = V.fromList
+                              [StyleRange {styleOffset = 0, styleLength = 4, style = Bold},
+                               StyleRange {styleOffset = 12, styleLength = 10, style = Bold},
+                               StyleRange {styleOffset = 5, styleLength = 6, style = Italic},
+                               StyleRange {styleOffset = 12, styleLength = 10, style = Italic}],
+         entityRanges = V.fromList []}
 
--- data TagAction =
---     Open
---   | Close
---   deriving (Eq, Show)
+data TagAction =
+    Open
+  | Close
+  deriving (Eq, Show)
 
--- data BufferAction =
---   BufferAction { actionStyle :: Style
---                , openOrClose :: TagAction }
---   deriving (Eq, Show)
+data BufferAction =
+  BufferAction { actionStyle :: Style
+               , openOrClose :: TagAction }
+  deriving (Eq, Show)
 
--- updateMap :: (Ord k) => k -> BufferAction -> Map k (NE.NonEmpty BufferAction) -> Map k (NE.NonEmpty BufferAction)
--- updateMap k v m = if M.member k m
---                   then M.adjust (<> (singletonNE v)) k m
---                   else M.insert k (singletonNE v) m
+updateMap :: (Ord k) => k -> BufferAction -> Map k (NE.NonEmpty BufferAction) -> Map k (NE.NonEmpty BufferAction)
+updateMap k v m = if M.member k m
+                  then M.adjust (<> (singletonNE v)) k m
+                  else M.insert k (singletonNE v) m
 
--- singletonNE v = v NE.:| []
+singletonNE v = v NE.:| []
 
--- type ActionsMap = M.Map Natural (NE.NonEmpty BufferAction)
+type ActionsMap = M.Map Natural (NE.NonEmpty BufferAction)
 
--- injectStyleRange :: StyleRange -> ActionsMap -> ActionsMap
--- injectStyleRange StyleRange{..} m = withClose
---   where start = styleOffset
---         terminate = styleOffset + styleLength
---         withOpen = updateMap start (BufferAction style Open) m
---         withClose = updateMap terminate (BufferAction style Open) withOpen
+injectStyleRange :: StyleRange -> ActionsMap -> ActionsMap
+injectStyleRange StyleRange{..} m = withClose
+  where start = styleOffset
+        terminate = styleOffset + styleLength
+        withOpen = updateMap start (BufferAction style Open) m
+        withClose = updateMap terminate (BufferAction style Open) withOpen
 
--- buildIndices :: Block -> ActionsMap
--- buildIndices Block{..} =
---   foldr injectStyleRange mempty inlineStyleRanges
+buildIndices :: Block -> ActionsMap
+buildIndices Block{..} =
+  foldr injectStyleRange mempty inlineStyleRanges
 
--- baToTag :: BufferAction -> BS.ByteString
--- baToTag (BufferAction s ta) = styleToTag ta s
+baToTag :: BufferAction -> BS.ByteString
+baToTag (BufferAction s ta) = styleToTag ta s
 
--- styleToTag :: TagAction -> Style -> BS.ByteString
--- styleToTag Open Bold = "<b>"
--- styleToTag Close Bold = "</b>"
--- styleToTag Open Italic = "<em>"
--- styleToTag Close Italic = "</em>"
--- styleToTag Open Strikethrough = "<del>"
--- styleToTag Close Strikethrough = "</del>"
--- styleToTag Open CodeStyle = "<code>"
--- styleToTag Close CodeStyle = "</code>"
+styleToTag :: TagAction -> Style -> BS.ByteString
+styleToTag Open Bold = "<b>"
+styleToTag Close Bold = "</b>"
+styleToTag Open Italic = "<em>"
+styleToTag Close Italic = "</em>"
+styleToTag Open Strikethrough = "<del>"
+styleToTag Close Strikethrough = "</del>"
+styleToTag Open CodeStyle = "<code>"
+styleToTag Close CodeStyle = "</code>"
 
 -- accumulateFromBlock :: ActionsMap -> Text -> BB.BufferBuilder ()
 -- accumulateFromBlock = undefined
 
 -- blockToHtml :: Block -> BS.ByteString
--- blockToHtml m Block{..} = undefined
+blockToHtml m Block{..} = undefined
 
--- contentToHtml :: ContentRaw -> BS.ByteString
--- contentToHtml = undefined
+contentToHtml :: ContentRaw -> BS.ByteString
+contentToHtml = undefined
 
--- testBB = BB.runBufferBuilder $ do
---   BB.appendBS "http"
---   BB.appendChar8 ':'
---   BB.appendBS "//"
+testBB = BB.runBufferBuilder $ do
+  BB.appendBS "http"
+  BB.appendChar8 ':'
+  BB.appendBS "//"
 
 -- indexMatchesStyleRange n StyleRange{..} =
 --   (n' == styleOffset, n' == (styleOffset + styleLength))
@@ -418,91 +449,3 @@ import GHC.Natural
 --         sortByStyle s s' = compare (style s) (style s')
 --         styleRangeList = sortBy sortByStyle $ V.toList inlineStyleRanges
         -- matchingIndex sr = (eitherTrue . indexMatchesStyleRange n sr)
-
-
--- InlineStyle
-data Style =
-    Bold
-  | Italic
-  | Strikethrough
-  -- A Header can be styled like code, for example
-  | Code
-  deriving (Eq, Ord, Show)
-
-data Link =
-  Link {
-    linkHref :: Text
-  , linkRel :: Text
-  , linkTarget :: Text
-  , linkTitle :: Text
-  , className :: Text
-  } deriving (Eq, Show)
-
-data Image =
-  Image {
-    imageSrc :: Text
-  , imageHeight :: Natural
-  , imageWidth :: Natural
-  , imageAlt :: Text
-  } deriving (Eq, Show)
-
-data Entity =
-    EntityLink Link
-  | EntityImage Image
-  deriving (Eq, Show)
-
-data BlockType =
-    Unstyled
-  | UnorderedListItem
-  | OrderedListItem
-  | Blockquote
-  | HeaderOne
-  | HeaderTwo
-  | HeaderThree
-  -- | HeaderFour
-  -- | HeaderFive
-  -- | HeaderSix
-  | CodeBlock
-  deriving (Eq, Show)
-
-instance FromJSON BlockType where
-  parseJSON (String "unstyled") = return Unstyled
-  parseJSON (String "unordered-list-item") = return UnorderedListItem
-  parseJSON (String "ordered-list-item") = return OrderedListItem
-  parseJSON (String "blockquote") = return Blockquote
-  parseJSON (String "header-one") = return HeaderOne
-  parseJSON (String "header-two") = return HeaderTwo
-  parseJSON (String "header-three") = return HeaderThree
-  -- parseJSON (String "header-four") = return HeaderFour
-  -- parseJSON (String "header-five") = return HeaderFive
-  -- parseJSON (String "header-six") = return HeaderSix
-  parseJSON (String "code-block") = return CodeBlock
-  parseJSON _ = fail "Expected one of several possible strings for BluePencil.BlockType"
-
--- data Tags =
---     Paragraph
---   | H1
---   | H2
---   | H3
---   | H4
---   | H5
---   | H6
---   | Li
---   | Pre
---   | CodeTag
---   deriving (Eq, Show)
-
-getTags :: BlockType -> [BS.ByteString]
-getTags Unstyled = ["<p>"]
-getTags UnorderedListItem = ["<li>"]
-getTags OrderedListItem = ["<li>"]
-getTags Blockquote = ["<blockquote"]
-getTags HeaderOne = ["<h1>"]
-getTags HeaderTwo = ["<h2>"]
-getTags HeaderThree = ["<h3"]
-getTags CodeBlock = ["<pre>", "<code>"]
-
-getWrapper :: BlockType -> Maybe BS.ByteString
-getWrapper UnorderedListItem = Just "<ul>"
-getWrapper OrderedListItem = Just "<ol>"
-getWrapper _ = Nothing
