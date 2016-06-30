@@ -1,30 +1,34 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 -- | This module is intended to be used as a qualified import.
 
 module BluePencil where
 
-import Control.Monad (forM_)
-import Data.Aeson
-import qualified Data.BufferBuilder as BB
-import qualified Data.ByteString as BS
-import qualified Data.IntervalMap.FingerTree as DIF
-import Data.List (partition, sortBy)
-import qualified Data.List.NonEmpty as NE
-import Data.Map (Map)
-import qualified Data.Map as M
-import Data.MonoTraversable (omapM_, ofoldlM)
-import Data.Semigroup
-import Data.Text (Text)
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
-import Data.Vector (Vector)
-import qualified Data.Vector as V
-import GHC.Natural
-import Text.Blaze.Html5 (Html)
-import qualified Text.Blaze.Html5 as H
-import qualified Text.Blaze.Html5.Attributes as A
-import Text.Blaze.Html.Renderer.Utf8 (renderHtml)
+import           Control.Monad                 (forM_)
+import           Data.Aeson
+import qualified Data.BufferBuilder            as BB
+import qualified Data.ByteString               as BS
+import qualified Data.IntervalMap.FingerTree   as DIF
+import qualified Data.IntervalSet              as IS
+import qualified Data.IntervalMap.Strict as IMS
+import           Data.List                     (partition, sort, sortBy)
+import qualified Data.List.NonEmpty            as NE
+import           Data.Map                      (Map)
+import qualified Data.Map                      as M
+import           Data.MonoTraversable          (ofoldlM, omapM_)
+import           Data.Ord                      (comparing)
+import           Data.Semigroup
+import           Data.Text                     (Text)
+import qualified Data.Text                     as T
+import qualified Data.Text.Encoding            as TE
+import           Data.Vector                   (Vector)
+import qualified Data.Vector                   as V
+import           GHC.Natural
+import           Text.Blaze.Html.Renderer.Utf8 (renderHtml)
+import           Text.Blaze.Html5              (Html)
+import qualified Text.Blaze.Html5              as H
+import qualified Text.Blaze.Html5.Attributes   as A
 
 data BlockType =
     Unstyled
@@ -55,6 +59,7 @@ data Style =
   | Strikethrough
   -- A Header can be styled like code, for example
   | CodeStyle
+  | Plain
   deriving (Eq, Ord, Show)
 
 instance FromJSON Style where
@@ -69,7 +74,7 @@ data StyleRange =
   StyleRange {
     styleOffset :: Natural
   , styleLength :: Natural
-  , style :: Style
+  , style       :: Style
   } deriving (Eq, Show)
 
 instance FromJSON StyleRange where
@@ -82,7 +87,7 @@ data EntityRange =
   EntityRange {
     entityOffset :: Natural
   , entityLength :: Natural
-  , entityKey :: Natural
+  , entityKey    :: Natural
   } deriving (Eq, Show)
 
 instance FromJSON EntityRange where
@@ -94,12 +99,12 @@ instance FromJSON EntityRange where
 
 data Block =
   Block {
-    blockKey :: Text
-  , blockText :: Text
-  , blockType :: BlockType
-  , blockDepth :: Natural
+    blockKey          :: Text
+  , blockText         :: Text
+  , blockType         :: BlockType
+  , blockDepth        :: Natural
   , inlineStyleRanges :: Vector StyleRange
-  , entityRanges :: Vector EntityRange
+  , entityRanges      :: Vector EntityRange
   } deriving (Eq, Show)
 
 instance FromJSON Block where
@@ -146,9 +151,9 @@ instance FromJSON Mutability where
 
 data Entity =
   Entity {
-    entityType :: EntityType
+    entityType       :: EntityType
   , entityMutability :: Mutability
-  , entityData :: EntityData
+  , entityData       :: EntityData
   } deriving (Eq, Show)
 
 instance FromJSON Entity where
@@ -160,7 +165,7 @@ instance FromJSON Entity where
 data ContentRaw =
   ContentRaw {
     entityMap :: Map Text Entity
-  , blocks :: Vector Block
+  , blocks    :: Vector Block
   } deriving (Eq, Show)
 
 makeEmptyContent :: Text -> ContentRaw
@@ -209,10 +214,10 @@ pseudoOverlap =
          entityRanges = V.fromList []}
 
 data TagsInFlight =
-  TagsInFlight { boldActive :: Maybe (Natural, Natural)
+  TagsInFlight { boldActive   :: Maybe (Natural, Natural)
                , italicActive :: Maybe (Natural, Natural)
                , strikeActive :: Maybe (Natural, Natural)
-               , codeActive :: Maybe (Natural, Natural) }
+               , codeActive   :: Maybe (Natural, Natural) }
   deriving (Eq, Show)
 
 srCompare :: StyleRange -> StyleRange -> Ordering
@@ -293,8 +298,47 @@ splitXs = splitOverlaps isrA
 
 -- [] :: [Natural]
 
-renderSplits :: Text -> [StyleRangeAbsolute] -> Html
-renderSplits t xs = undefined
+
+consolidate :: [Natural] -> [(Natural,Natural)]
+consolidate = undefined
+
+fillGaps :: Natural -> [StyleRangeAbsolute] -> [StyleRangeAbsolute]
+fillGaps _ [] = []
+fillGaps endIndex xs = map mkPlain $ consolidate remaining
+
+  where remaining =
+          IS.toAscList $
+          IS.difference
+            (IS.fromList [0..endIndex])
+            (IS.unions $ map getInterval xs)
+
+getInterval :: StyleRangeAbsolute -> IS.IntervalSet Natural
+getInterval sta =
+  fl ([(sraStart sta) .. (sraStop sta)])
+  where -- fl :: IS.Interval Natural a =>
+        fl :: IS.Interval (IMS.Interval Natural) Natural =>
+              [Natural] -> IS.IntervalSet Natural
+        fl = IS.fromList
+mkPlain (lo, hi) =
+  StyleRangeAbsolute { sraStart = lo
+                     , sraStop = hi
+                     , sraStyle = Plain }
+
+renderSplits :: Text -> [StyleRangeAbsolute] -> Text
+renderSplits t xs = go M.empty xs
+  where
+    go :: Map Natural [Text] -> [StyleRangeAbsolute] -> Text
+    go stack []
+      | stack == M.empty = "<p><br></p>"
+      | True = mconcat $ map (mconcat . snd ) $ sortBy (comparing fst) $ M.toList stack
+    go stack (x:xs) =
+      let (open,close) = renderStyle x t
+          (closeable, mhere, continue) = M.splitLookup (sraStart x) stack
+          endingHere = maybe mempty mconcat mhere
+          closeableText = mconcat $ reverse $ map (mconcat . snd) $ sortBy (comparing fst) $ M.toList closeable
+      in closeableText <> endingHere <> open <> go (M.insertWith (<>) (sraStop x) [close] continue) xs
+
+
 
 html = renderHtml $ do
   -- 0 16
@@ -501,15 +545,27 @@ checkOverlapA sr sr' =
 -- baToTag :: BufferAction -> BS.ByteString
 -- baToTag (BufferAction s ta) = styleToTag ta s
 
--- styleToTag :: TagAction -> Style -> BS.ByteString
--- styleToTag Open Bold = "<b>"
--- styleToTag Close Bold = "</b>"
--- styleToTag Open Italic = "<em>"
--- styleToTag Close Italic = "</em>"
--- styleToTag Open Strikethrough = "<del>"
--- styleToTag Close Strikethrough = "</del>"
--- styleToTag Open CodeStyle = "<pre><code>"
--- styleToTag Close CodeStyle = "</code></pre>"
+data TagAction = Open | Close
+
+styleToTag :: TagAction -> Style -> Text
+styleToTag Open Bold = "<b>"
+styleToTag Close Bold = "</b>"
+styleToTag Open Italic = "<em>"
+styleToTag Close Italic = "</em>"
+styleToTag Open Strikethrough = "<del>"
+styleToTag Close Strikethrough = "</del>"
+styleToTag Open CodeStyle = "<pre><code>"
+styleToTag Close CodeStyle = "</code></pre>"
+styleToTag _ Plain         = ""
+
+
+renderStyle :: StyleRangeAbsolute -> Text -> (Text,Text)
+renderStyle sta text = ( open <> slice (sraStart sta) (sraStop sta) text
+                       , close)
+  where open = styleToTag Open (sraStyle sta)
+        close = styleToTag Close (sraStyle sta)
+
+
 
 -- accumulateFromBlock :: ActionsMap -> Text -> BB.BufferBuilder ()
 -- accumulateFromBlock = undefined
@@ -566,7 +622,7 @@ checkOverlapA sr sr' =
 --     (True, _) -> styleToTag Open style
 --     (_, True) -> styleToTag Close style
 --     (False, False) -> ""
-  
+
 
 -- addIfIndexMatches :: Block -> Int -> StyleRange -> [StyleRange]
 -- addIfIndexMatches Block{..} n StyleRange{..} xs =
