@@ -8,7 +8,8 @@ import Control.Monad (forM_)
 import Data.Aeson
 import qualified Data.BufferBuilder as BB
 import qualified Data.ByteString as BS
-import Data.List (sortBy)
+import qualified Data.IntervalMap.FingerTree as DIF
+import Data.List (partition, sortBy)
 import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -184,8 +185,244 @@ exampleBlock =
                                StyleRange {styleOffset = 12, styleLength = 10, style = Italic}],
          entityRanges = V.fromList []}
 
-styleRangeToHtml :: Text -> StyleRange -> (Natural, Html)
-styleRangeToHtml t StyleRange{..} = undefined
+t :: Text
+t = "bold italic bolditalic"
+r = [(Bold, 0, 4), (Bold, 12, 10), (Italic, 5, 6), (Italic, 12, 10)]
+
+t' :: Text
+t' = "bold bolditalic italic"
+r' = [(Bold, 0, 16), (Italic, 5, 16)]
+boldFragment' = T.take 16 (T.drop 0 t')
+itFragment' = T.take 17 (T.drop 5 t')
+r'' = [(Bold, 0, 16), (Italic, 5, 11), (Italic, 16, 5)]
+itFragment2' = T.take 17 (T.drop 5 t')
+itFragment2'' = T.take 17 (T.drop 5 t')
+
+pseudoOverlap =
+  Block {blockKey = "3vpca",
+         blockText = "bold bolditalic italic",
+         blockType = Unstyled,
+         blockDepth = 0, -- almost exclusively for lists at the moment
+         inlineStyleRanges = V.fromList
+                              [StyleRange {styleOffset = 0, styleLength = 16, style = Bold},
+                               StyleRange {styleOffset = 5, styleLength = 17, style = Italic}],
+         entityRanges = V.fromList []}
+
+data TagsInFlight =
+  TagsInFlight { boldActive :: Maybe (Natural, Natural)
+               , italicActive :: Maybe (Natural, Natural)
+               , strikeActive :: Maybe (Natural, Natural)
+               , codeActive :: Maybe (Natural, Natural) }
+  deriving (Eq, Show)
+
+srCompare :: StyleRange -> StyleRange -> Ordering
+srCompare (StyleRange o l _) (StyleRange o' l' _) =
+  case compare o o' of
+    EQ -> compare l l'
+    x -> x
+
+-- Prelude> <b>bold <em>bolditalic</em></b> <em>iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiitalic</em>
+sraCompare :: StyleRangeAbsolute -> StyleRangeAbsolute -> Ordering
+sraCompare (StyleRangeAbsolute i j _) (StyleRangeAbsolute i' j' _) =
+  case compare i i' of
+    EQ -> compare j j'
+    x -> x
+
+-- 28
+testText :: Text
+testText = "bold bolditalic italic boldAgain plain"
+
+firstSr = StyleRange {styleOffset = 0, styleLength = 16, style = Bold}
+secondSr = StyleRange {styleOffset = 5, styleLength = 17, style = Italic}
+thirdSr = StyleRange {styleOffset = 23, styleLength = 9, style = Bold}
+
+data StyleRangeAbsolute =
+  StyleRangeAbsolute {
+    sraStart :: Natural
+  , sraStop  :: Natural
+  , sraStyle :: Style
+  } deriving (Eq, Show)
+
+srToSra :: StyleRange -> StyleRangeAbsolute
+srToSra StyleRange{..} =
+  StyleRangeAbsolute styleOffset (styleLength + styleOffset) style
+
+
+isr = [secondSr,
+       thirdSr,
+       firstSr
+       ]
+
+sortSegments = sortBy sraCompare
+
+firstSra = srToSra firstSr
+secondSra = srToSra secondSr
+thirdSra = srToSra thirdSr
+
+isrA = sortSegments $ fmap srToSra isr
+isrA' = [firstSra, secondSra]
+
+splitOverlaps [] = []
+splitOverlaps (x : xs) =
+  x : (splitOverlaps merged)
+  where overlapT :: ([StyleRangeAbsolute], [StyleRangeAbsolute])
+        overlapT = partition (checkOverlapA x) xs
+        overlaps = fst overlapT
+        nonOverlaps = snd overlapT
+        splitPoint = sraStop x
+        splits = concatMap (splitOverlap x) overlaps
+        merged = sortSegments $ splits ++ nonOverlaps
+
+splitOverlap :: StyleRangeAbsolute -> StyleRangeAbsolute -> [StyleRangeAbsolute]
+splitOverlap (StyleRangeAbsolute i j s) (StyleRangeAbsolute i' j' s') =
+  [split1, split2]
+  where split1 = StyleRangeAbsolute i' j s'
+        split2 = StyleRangeAbsolute j j' s'
+
+tt = testText
+
+ntoi = fromInteger . toInteger
+
+slice :: Natural -> Natural -> Text -> Text
+slice start stop t =
+  T.take (j - i) (T.drop i t)
+  where i = ntoi start
+        j = ntoi stop
+
+splitXs = splitOverlaps isrA
+
+-- [] :: [Natural]
+
+renderSplits :: Text -> [StyleRangeAbsolute] -> Html
+renderSplits t xs = undefined
+
+html = renderHtml $ do
+  -- 0 16
+  H.b $ do
+    H.text (slice 0 5 tt)
+    H.em $ do
+      H.text (slice 5 16 tt)
+  H.em $ do
+    H.text (slice 16 22 tt)
+  H.text (slice 22 23 tt)
+  H.b $ do
+    H.text (slice 23 32 tt)
+  H.text (slice 32 38 tt)
+
+  -- H.b $ do
+  --   H.text (T.take 5 (T.drop 0 testText))
+  --   H.em $ do
+  --     H.text (T.take 17 (T.drop 5 testText))
+  -- H.text (T.take 6 (T.drop 22 testText))
+
+-- Prelude> splitOverlap (isrA !! 0) (isrA !! 1)
+-- [StyleRangeAbsolute {sraStart = 5, sraStop = 16, sraStyle = Italic},StyleRangeAbsolute {sraStart = 16, sraStop = 22, sraStyle = Italic}]
+
+-- matchingIndex :: [StyleRange] -> Natural -> [StyleRange]
+-- matchingIndex xs n =
+--   filter (inRange n) xs
+--   where olToIndices StyleRange{..} = (styleOffset, styleOffset + styleLength)
+--         indexInTuple n (s, e) = s <= n && n <= e
+--         inRange n sr = indexInTuple n (olToIndices sr)
+
+-- contentWithTags :: [StyleRange] -> Text -> BB.BufferBuilder ()
+contentWithTags xs t = do
+  paired
+  where chars = T.unpack t
+        range = (T.length t) - 1
+        indexing = [0..range]
+        paired = zip indexing chars
+
+cwt = contentWithTags isr testText
+
+-- sth :: Style -> (Html -> Html)
+-- sth Bold = H.b
+-- sth Italic = H.em
+-- sth _ = undefined
+
+-- ntoi :: Natural -> Int
+-- ntoi = fromInteger . toInteger
+
+-- build :: Text -> [StyleRange] -> Html
+-- build t (sr@StyleRange{..} : xs) = do
+--   (sth style) (H.text (T.take stride (T.drop index t)))
+--   where index = ntoi styleOffset
+--         stride = ntoi (styleOffset + styleLength)
+--         overlaps = filter (checkOverlap sr) xs
+
+-- splitOverlap :: StyleRange -> StyleRange -> [StyleRange]
+-- splitOverlap firstSr@(StyleRange o l s) (StyleRange o' l' s') =
+--   [firstSr, split1, split2]
+--   where split1 = StyleRange o' (l - o') s'
+--         split2 = StyleRange l (l' - (l - o')) s'
+
+-- splitIfOverlapped :: StyleRange -> StyleRange -> [StyleRange]
+-- splitIfOverlapped sr sr' =
+--   if checkOverlap sr sr'
+--   then splitOverlap sr sr'
+--   else [sr, sr']
+
+-- splitList = foldr splitIfOverlapped [] (sortBy srCompare isr)
+
+-- html = renderHtml $ build testText isr
+
+tr = [ StyleRange {styleOffset = 0, styleLength = 16, style = Bold}
+     , StyleRange {styleOffset = 0, styleLength = 3, style = Italic}
+     , StyleRange {styleOffset = 5, styleLength = 17, style = Italic} ]
+
+-- type Intervals = DIF.IntervalMap Natural Style
+
+rangeTuple :: StyleRange -> (Natural, Natural)
+rangeTuple StyleRange{..} = (styleOffset, styleOffset + styleLength)
+
+rangeTupleA :: StyleRangeAbsolute -> (Natural, Natural)
+rangeTupleA (StyleRangeAbsolute i j s) = (i, j)
+
+-- insertSr :: StyleRange -> Intervals -> Intervals
+-- insertSr StyleRange{..} im =
+--   DIF.insert (DIF.Interval styleOffset (styleOffset + styleLength)) style im
+
+-- buildIm :: [StyleRange] -> Intervals
+-- buildIm xs = foldr insertSr DIF.empty xs
+
+-- We're assuming l <= h and l' <= h'
+-- it's any overlap.
+overlapping :: (Natural, Natural) -> (Natural, Natural) -> Bool
+overlapping (l, h) (l', h') =
+  l < h' && l' < h
+
+-- (0, 16) (5, 15) <--- first dominates second, this is false
+-- (0, 16) (5, 17) <--- second extends outside first, this is true
+overlapNotDominated :: (Natural, Natural) -> (Natural, Natural) -> Bool
+overlapNotDominated i@(l, h) i'@(l', h') =
+  (overlapping i i') && h < h'
+
+checkOverlap :: StyleRange -> StyleRange -> Bool
+checkOverlap sr sr' =
+  overlapNotDominated (rangeTuple sr) (rangeTuple sr')
+
+checkOverlapA :: StyleRangeAbsolute -> StyleRangeAbsolute -> Bool
+checkOverlapA sr sr' =
+  overlapNotDominated (rangeTupleA sr) (rangeTupleA sr')
+
+-- Prelude> checkOverlapA (isrA !! 0) (isrA !! 1)
+-- True
+-- Prelude> checkOverlapA (isrA !! 0) (StyleRangeAbsolute {sraStart = 17, sraStop = 22, sraStyle = Italic})
+-- False
+
+-- exclusive to drop duplicates
+
+-- im = buildIm tr
+
+-- filter (\(i, s) -> overlapNotDominated (DIF.Interval 0 16) i) $ DIF.intersections (DIF.Interval 0 16) im
+
+
+-- [(0, 16, Bold), (5, 17, Italic)]
+-- [(0, 16, Bold), (5, 22, Italic)]
+-- [(0, 16, Bold), (5, 16, Italic), (16, 22, Italic)]
+
+-- styleRangeToHtml :: Text -> StyleRange -> (Natural, Html)
+-- styleRangeToHtml t StyleRange{..} = undefined
   -- where
   --   sortByStyle s s' = compare (style s) (style s')
   --   sortedList = sortBy sortByStyle $ V.toList inlineStyleRanges
@@ -206,30 +443,30 @@ styleRangeToHtml t StyleRange{..} = undefined
 -- {"entityMap":{},"blocks":[{"key":"8n4dj","text":"All Bold but this is Italic","type":"unstyled","depth":0,"inlineStyleRanges":[{"offset":0,"length":27,"style":"BOLD"},{"offset":13,"length":14,"style":"ITALIC"}],"entityRanges":[]}]}
 -- <p><strong>All Bold but </strong><em><strong>this is Italic</strong></em></p>
 
-codeBlock =
-  Block {blockKey = "3vpca",
-         blockText = "bold italic bolditalic",
-         blockType = CodeBlock,
-         blockDepth = 0, -- almost exclusively for lists at the moment
-         inlineStyleRanges = V.fromList
-                              [StyleRange {styleOffset = 0, styleLength = 4, style = Bold},
-                               StyleRange {styleOffset = 12, styleLength = 10, style = Bold},
-                               StyleRange {styleOffset = 5, styleLength = 6, style = Italic},
-                               StyleRange {styleOffset = 12, styleLength = 10, style = Italic}],
-         entityRanges = V.fromList []}
+-- codeBlock =
+--   Block {blockKey = "3vpca",
+--          blockText = "bold italic bolditalic",
+--          blockType = CodeBlock,
+--          blockDepth = 0, -- almost exclusively for lists at the moment
+--          inlineStyleRanges = V.fromList
+--                               [StyleRange {styleOffset = 0, styleLength = 4, style = Bold},
+--                                StyleRange {styleOffset = 12, styleLength = 10, style = Bold},
+--                                StyleRange {styleOffset = 5, styleLength = 6, style = Italic},
+--                                StyleRange {styleOffset = 12, styleLength = 10, style = Italic}],
+--          entityRanges = V.fromList []}
 
-htmlBlock :: Block -> Html
-htmlBlock Block{..} = wrapBlock blockType (H.text blockText)
+-- htmlBlock :: Block -> Html
+-- htmlBlock Block{..} = wrapBlock blockType (H.text blockText)
 
-wrapBlock :: BlockType -> Html -> Html
-wrapBlock Unstyled content = H.p content
-wrapBlock UnorderedListItem content = H.li content
-wrapBlock OrderedListItem content = H.li content
-wrapBlock Blockquote content = H.blockquote content
-wrapBlock HeaderOne content = H.h1 content
-wrapBlock HeaderTwo content = H.h2 content
-wrapBlock HeaderThree content = H.h3 content
-wrapBlock CodeBlock content = H.pre (H.code content)
+-- wrapBlock :: BlockType -> Html -> Html
+-- wrapBlock Unstyled content = H.p content
+-- wrapBlock UnorderedListItem content = H.li content
+-- wrapBlock OrderedListItem content = H.li content
+-- wrapBlock Blockquote content = H.blockquote content
+-- wrapBlock HeaderOne content = H.h1 content
+-- wrapBlock HeaderTwo content = H.h2 content
+-- wrapBlock HeaderThree content = H.h3 content
+-- wrapBlock CodeBlock content = H.pre (H.code content)
 
 -- data TagAction =
 --     Open
