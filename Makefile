@@ -8,4 +8,4 @@ test:
 	stack test
 
 test-ghci:
-	stack ghci bluepencil:bluepencil-tests
+	stack ghci bluepencil --test
