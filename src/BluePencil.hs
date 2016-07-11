@@ -65,6 +65,9 @@ instance FromJSON BlockType where
   parseJSON (String "header-one") = return HeaderOne
   parseJSON (String "header-two") = return HeaderTwo
   parseJSON (String "header-three") = return HeaderThree
+  parseJSON (String "header-four") = return HeaderFour
+  parseJSON (String "header-five") = return HeaderFive
+  parseJSON (String "header-six") = return HeaderSix
   parseJSON (String "code-block") = return CodeBlock
   parseJSON _ = fail "Expected one of several possible strings for BluePencil.BlockType"
 

@@ -15,7 +15,7 @@ import Data.DeriveTH
 import qualified Data.Map as M
 import Data.Monoid
 import Data.Proxy
-import Data.Text.Arbitrary
+import Data.Text.Arbitrary ()
 import Data.Typeable
 import qualified Data.Vector as V
 import Test.Hspec
@@ -34,7 +34,19 @@ main = hspec $ do
     it "contentHtmlTest should be the correct HTML" $ do
       renderContent contentHtmlTest `shouldBe` expectedHtml
   describe "JSON instances" $ do
-    propJSON (Proxy :: Proxy ContentRaw)
+    it "should have isomorphism for small, simple examples" $ do
+      decode (encode emptyContent) `shouldBe` Just emptyContent
+  describe "JSON instances should have isomorphism" $ do
+      propJSON (Proxy :: Proxy BlockType)
+      propJSON (Proxy :: Proxy EntityRange)
+      propJSON (Proxy :: Proxy EntityData)
+      propJSON (Proxy :: Proxy Style)
+      propJSON (Proxy :: Proxy EntityType)
+      propJSON (Proxy :: Proxy StyleRange)
+      propJSON (Proxy :: Proxy Mutability)
+      propJSON (Proxy :: Proxy Block)
+      propJSON (Proxy :: Proxy Entity)
+      propJSON (Proxy :: Proxy ContentRaw)
 
 emptyHTML :: String
 emptyHTML = ""
