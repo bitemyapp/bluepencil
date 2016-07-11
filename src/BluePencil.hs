@@ -51,6 +51,9 @@ data BlockType =
   | HeaderOne
   | HeaderTwo
   | HeaderThree
+  | HeaderFour
+  | HeaderFive
+  | HeaderSix
   | CodeBlock
   deriving (Eq, Show)
 
@@ -65,6 +68,18 @@ instance FromJSON BlockType where
   parseJSON (String "code-block") = return CodeBlock
   parseJSON _ = fail "Expected one of several possible strings for BluePencil.BlockType"
 
+instance ToJSON BlockType where
+  toJSON Unstyled = String "unstyled"
+  toJSON UnorderedListItem = String "unordered-list-item"
+  toJSON OrderedListItem = String "ordered-list-item"
+  toJSON Blockquote = String "blockquote"
+  toJSON HeaderOne = String "header-one"
+  toJSON HeaderTwo = String "header-two"
+  toJSON HeaderThree = String "header-three"
+  toJSON HeaderFour = String "header-four"
+  toJSON HeaderFive = String "header-five"
+  toJSON HeaderSix = String "header-six"
+  toJSON CodeBlock = String "code-block"
 
 data Style =
     Bold
@@ -72,7 +87,7 @@ data Style =
   | Strikethrough
   -- A Header can be styled like code, for example
   | CodeStyle
-  | Plain
+  | Underline
   deriving (Eq, Ord, Show)
 
 instance FromJSON Style where
@@ -80,8 +95,15 @@ instance FromJSON Style where
   parseJSON (String "ITALIC") = return Italic
   parseJSON (String "STRIKETHROUGH") = return Strikethrough
   parseJSON (String "CODE") = return CodeStyle
+  parseJSON (String "UNDERLINE") = return Underline
   parseJSON _ = fail "Expected one of several possible strings for BluePencil.Style"
 
+instance ToJSON Style where
+  toJSON Bold = String "BOLD"
+  toJSON Italic = String "ITALIC"
+  toJSON Strikethrough = String "STRIKETHROUGH"
+  toJSON CodeStyle = String "CODE"
+  toJSON Underline = String "UNDERLINE"
 
 data StyleRange =
   StyleRange {
@@ -96,6 +118,12 @@ instance FromJSON StyleRange where
                                <*> o .: "length"
                                <*> o .: "style"
 
+instance ToJSON StyleRange where
+  toJSON (StyleRange offset length' style) =
+    object [ "offset" .= offset
+           , "length" .= length'
+           , "style" .= style ]
+
 data EntityRange =
   EntityRange {
     entityOffset :: Natural
@@ -109,6 +137,11 @@ instance FromJSON EntityRange where
                                 <*> o .: "length"
                                 <*> o .: "key"
 
+instance ToJSON EntityRange where
+  toJSON (EntityRange offset length' key) =
+    object [ "offset" .= offset
+           , "length" .= length'
+           , "key" .= key ]
 
 data Block =
   Block {
@@ -129,6 +162,16 @@ instance FromJSON Block where
                           <*> o .: "inlineStyleRanges"
                           <*> o .: "entityRanges"
 
+instance ToJSON Block where
+  toJSON (Block blockKey blockText blockType blockDepth inlineStyleRanges entityRanges) =
+    object [ "key" .= blockKey
+           , "text" .= blockText
+           , "type" .= blockType
+           , "depth" .= blockDepth
+           , "inlineStyleRanges" .= inlineStyleRanges
+           , "entityRanges" .= entityRanges
+           ]
+
 
 data EntityType =
     Link
@@ -138,8 +181,12 @@ data EntityType =
 instance FromJSON EntityType where
   parseJSON = withText "EntityType" parse
     where parse "LINK" = return Link
+          parse "IMAGE" = return Image
           parse _ = fail "Expected a String \"LINK\" or \"IMAGE\" for BluePencil.EntityType"
 
+instance ToJSON EntityType where
+  toJSON Link = String "LINK"
+  toJSON Image = String "IMAGE"
 
 data EntityData =
   EntityData { entityDataUrl :: Text }
@@ -149,6 +196,9 @@ instance FromJSON EntityData where
   parseJSON = withObject "EntityData" parse
     where parse o = EntityData <$> o .: "url"
 
+instance ToJSON EntityData where
+  toJSON (EntityData entityDataUrl) =
+    object ["url" .= entityDataUrl]
 
 data Mutability =
     Mutable
@@ -161,6 +211,9 @@ instance FromJSON Mutability where
           parse "IMMUTABLE" = return Immutable
           parse _ = fail "Expected MUTABLE or IMMUTABLE for BluePencil.Mutability"
 
+instance ToJSON Mutability where
+  toJSON Mutable = String "MUTABLE"
+  toJSON Immutable = String "IMMUTABLE"
 
 data Entity =
   Entity {
@@ -174,6 +227,12 @@ instance FromJSON Entity where
     where parse o = Entity <$> o .: "type"
                            <*> o .: "mutability"
                            <*> o .: "data"
+
+instance ToJSON Entity where
+  toJSON (Entity entityType mutability entityData) =
+    object [ "type" .= entityType
+           , "mutability" .= mutability
+           , "data" .= entityData ]
 
 hrefToOpenAnchor :: Text -> BS.ByteString
 hrefToOpenAnchor uri =
@@ -206,6 +265,12 @@ instance FromJSON ContentRaw where
   parseJSON = withObject "ContentRaw" parse
     where parse o = ContentRaw <$> o .: "entityMap"
                                <*> o .: "blocks"
+
+instance ToJSON ContentRaw where
+  toJSON (ContentRaw entityMap blocks) =
+    object [ "entityMap" .= entityMap
+           , "blocks"    .= blocks
+           ]
 
 sraCompare :: StyleRangeAbsolute -> StyleRangeAbsolute -> Ordering
 sraCompare (StyleRangeAbsolute i j _) (StyleRangeAbsolute i' j' _) =
@@ -329,7 +394,8 @@ styleToTag Open Strikethrough = "<del>"
 styleToTag Close Strikethrough = "</del>"
 styleToTag Open CodeStyle = "<pre><code>"
 styleToTag Close CodeStyle = "</code></pre>"
-styleToTag _ Plain         = ""
+styleToTag Open Underline = "<ul>"
+styleToTag Close Underline = "</u>"
 
 taToTupleGetter :: TagAction -> (a, a) -> a
 taToTupleGetter Open (a, _) = a
@@ -385,6 +451,9 @@ blockTypeTags Blockquote        = ("<blockquote>", "</blockquote>")
 blockTypeTags HeaderOne         = ("<h1>", "</h1>")
 blockTypeTags HeaderTwo         = ("<h2>", "</h2>")
 blockTypeTags HeaderThree       = ("<h3>", "</h3>")
+blockTypeTags HeaderFour        = ("<h4>", "</h4>")
+blockTypeTags HeaderFive        = ("<h5>", "</h5>")
+blockTypeTags HeaderSix         = ("<h6>", "</h6>")
 blockTypeTags CodeBlock         = ("<pre><code>", "</code></pre>")
 
 

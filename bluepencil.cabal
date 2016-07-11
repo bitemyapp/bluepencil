@@ -57,6 +57,9 @@ test-suite bluepencil-tests
     , text                          >= 1.2        && < 1.3
     , vector                        >= 0.10       && < 0.12
     , bluepencil
+    , derive
     , hspec
+    , QuickCheck
+    , quickcheck-text
     , raw-strings-qq
   default-language: Haskell2010

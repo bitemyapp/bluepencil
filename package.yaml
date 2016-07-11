@@ -34,6 +34,9 @@ tests:
     main: Main.hs
     dependencies:
       - bluepencil
+      - derive
       - hspec
+      - QuickCheck
+      - quickcheck-text
       - raw-strings-qq
     ghc-options: -threaded -rtsopts -with-rtsopts=-N

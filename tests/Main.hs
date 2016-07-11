@@ -1,15 +1,40 @@
 {-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Main where
 
 import BluePencil
 import Data.Aeson
+import Data.Aeson.Types (parseEither)
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy.Char8 as BL8
+import Data.DeriveTH
 import qualified Data.Map as M
+import Data.Monoid
+import Data.Proxy
+import Data.Text.Arbitrary
+import Data.Typeable
 import qualified Data.Vector as V
 import Test.Hspec
+import Test.Hspec.QuickCheck           (prop)
+import Test.QuickCheck
 import Text.RawString.QQ
+
+main :: IO ()
+main = hspec $ do
+  describe "Valid JSON inputs should parse correctly" $ do
+    it "Empty JSON should produce empty content" $ do
+      decode emptyJSON `shouldBe` Just emptyContent
+    it "Example JSON should produce the example content" $ do
+      decode exampleJSON `shouldBe` Just exampleContent
+  describe "Rendering raw content value should produce the correct HTML" $ do
+    it "contentHtmlTest should be the correct HTML" $ do
+      renderContent contentHtmlTest `shouldBe` expectedHtml
+  describe "JSON instances" $ do
+    propJSON (Proxy :: Proxy ContentRaw)
 
 emptyHTML :: String
 emptyHTML = ""
@@ -219,14 +244,26 @@ expectedHtml = [r|<p><b>bold <em>bolditalic</em></b><em> <a href="http://google.
 <p>Second block</p>
 |]
 
--- <p><br></p>
-main :: IO ()
-main = hspec $ do
-  describe "Valid JSON inputs should parse correctly" $ do
-    it "Empty JSON should produce empty content" $ do
-      decode emptyJSON `shouldBe` Just emptyContent
-    it "Example JSON should produce the example content" $ do
-      decode exampleJSON `shouldBe` Just exampleContent
-  describe "Rendering raw content value should produce the correct HTML" $ do
-    it "contentHtmlTest should be the correct HTML" $ do
-      renderContent contentHtmlTest `shouldBe` expectedHtml
+-- ApproxEq a,
+-- ==~
+propJSON :: forall a . (Arbitrary a, ToJSON a, FromJSON a, Eq a, Show a, Typeable a) => Proxy a -> Spec
+propJSON _ = prop testName $ \(a :: a) ->
+  let jsonStr = "via " <> BL8.unpack (encode a)
+  in counterexample jsonStr (parseEither parseJSON (toJSON a) == Right a)
+  where testName = show ty <> " FromJSON/ToJSON roundtrips"
+        ty = typeOf (undefined :: a)
+
+-- this is the saddest arbitrary instance I have ever written
+instance (Arbitrary a) => Arbitrary (V.Vector a) where
+    arbitrary = V.fromList <$> arbitrary
+
+$(derive makeArbitrary ''BlockType)
+$(derive makeArbitrary ''EntityRange)
+$(derive makeArbitrary ''EntityData)
+$(derive makeArbitrary ''Style)
+$(derive makeArbitrary ''EntityType)
+$(derive makeArbitrary ''StyleRange)
+$(derive makeArbitrary ''Mutability)
+$(derive makeArbitrary ''Block)
+$(derive makeArbitrary ''Entity)
+$(derive makeArbitrary ''ContentRaw)
