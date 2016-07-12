@@ -25,6 +25,11 @@ import Text.RawString.QQ
 
 main :: IO ()
 main = hspec $ do
+  describe "plain text rendering" $ do
+    it "should render empty content" $ do
+      renderPlainText emptyContent `shouldBe` "\n"
+    it "should render example content" $ do
+      renderPlainText exampleContent `shouldBe` "bold italic bolditalic\nstrikethrough\ncode example\nunordered list item\nordered list item\nblockquote\nhttp://bitemyapp.com\nHeading large\nHeading medium\nHeading small\nCode block\n\n"
   describe "Valid JSON inputs should parse correctly" $ do
     it "Empty JSON should produce empty content" $ do
       decode emptyJSON `shouldBe` Just emptyContent
@@ -32,7 +37,7 @@ main = hspec $ do
       decode exampleJSON `shouldBe` Just exampleContent
   describe "Rendering raw content value should produce the correct HTML" $ do
     it "contentHtmlTest should be the correct HTML" $ do
-      renderContent contentHtmlTest `shouldBe` expectedHtml
+      renderHtml contentHtmlTest `shouldBe` expectedHtml
   describe "JSON instances" $ do
     it "should have isomorphism for small, simple examples" $ do
       decode (encode emptyContent) `shouldBe` Just emptyContent

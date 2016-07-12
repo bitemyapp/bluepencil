@@ -24,7 +24,9 @@ module BluePencil
 
   , buildContent
   , makeEmptyContent
-  , renderContent )
+  , renderHtml
+  , renderPlainText
+  )
   where
 
 import           Data.Aeson
@@ -459,15 +461,6 @@ blockTypeTags HeaderFive        = ("<h5>", "</h5>")
 blockTypeTags HeaderSix         = ("<h6>", "</h6>")
 blockTypeTags CodeBlock         = ("<pre><code>", "</code></pre>")
 
-
-buildContent :: ContentRaw -> BB.BufferBuilder ()
-buildContent ContentRaw{..} =
-  traverse_ (buildBlock' entityMap) blocks
-
-renderContent :: ContentRaw -> BS.ByteString
-renderContent cr =
-  BB.runBufferBuilder (buildContent cr)
-
 overlapping :: (Natural, Natural) -> (Natural, Natural) -> Bool
 overlapping (l, h) (l', h') =
   l < h' && l' < h
@@ -485,3 +478,17 @@ rangeTupleTR (EntityTR (EntityRangeAbsolute i j _)) = (i, j)
 checkOverlapTR :: TagRange -> TagRange -> Bool
 checkOverlapTR tr tr' =
   overlapNotDominated (rangeTupleTR tr) (rangeTupleTR tr')
+
+
+buildContent :: ContentRaw -> BB.BufferBuilder ()
+buildContent ContentRaw{..} =
+  traverse_ (buildBlock' entityMap) blocks
+
+renderHtml :: ContentRaw -> BS.ByteString
+renderHtml cr =
+  BB.runBufferBuilder (buildContent cr)
+
+renderPlainText :: ContentRaw -> Text
+renderPlainText cr = T.unlines fragments
+  where fragments :: [Text]
+        fragments = V.foldr (\Block{..} xs -> blockText : xs) [] (blocks cr)
