@@ -1,48 +1,50 @@
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE QuasiQuotes       #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 -- | This module is intended to be used as a qualified import.
 
-module BluePencil
-  ( ContentRaw(..)
-  , Block(..)
-  , BlockType(..)
+module BluePencil where
+  -- ( ContentRaw(..)
+  -- , Block(..)
+  -- , BlockType(..)
 
-  , Style(..)
+  -- , Style(..)
 
-  , Entity(..)
-  , EntityType(..)
-  , EntityData(..)
-  , Mutability(..)
+  -- , Entity(..)
+  -- , EntityType(..)
+  -- , EntityData(..)
+  -- , Mutability(..)
 
-  , StyleRange(..)
-  , EntityRange(..)
-  , StyleRangeAbsolute(..)
-  , EntityRangeAbsolute(..)
+  -- , StyleRange(..)
+  -- , EntityRange(..)
+  -- , StyleRangeAbsolute(..)
+  -- , EntityRangeAbsolute(..)
 
-  , buildContent
-  , makeEmptyContent
-  , renderHtml
-  , renderPlainText
-  )
-  where
+  -- , buildContent
+  -- , makeEmptyContent
+  -- , renderHtml
+  -- , renderPlainText
+  -- )
+  -- where
 
+import           Control.Monad        (void)
 import           Data.Aeson
-import qualified Data.BufferBuilder            as BB
-import qualified Data.ByteString               as BS
-import           Data.Foldable                 (traverse_)
-import           Data.List                     (partition, sortBy)
-import           Data.Map                      (Map)
-import qualified Data.Map                      as M
-import           Data.Maybe                    (catMaybes)
-import           Data.MonoTraversable          (ofoldlM)
-import           Data.Text                     (Text)
-import qualified Data.Text                     as T
-import qualified Data.Text.Encoding            as TE
-import           Data.Vector                   (Vector)
-import qualified Data.Vector                   as V
+import qualified Data.BufferBuilder   as BB
+import qualified Data.ByteString      as BS
+import           Data.Foldable        (traverse_)
+import           Data.List            (partition, sortBy)
+import           Data.Map             (Map)
+import qualified Data.Map             as M
+import           Data.Maybe           (catMaybes)
+import           Data.MonoTraversable (ofoldlM)
+import qualified Data.Set             as S
+import           Data.Text            (Text)
+import qualified Data.Text            as T
+import qualified Data.Text.Encoding   as TE
+import           Data.Vector          (Vector)
+import qualified Data.Vector          as V
 import           GHC.Natural
 
 data BlockType =
@@ -318,6 +320,9 @@ srToSra :: StyleRange -> StyleRangeAbsolute
 srToSra StyleRange{..} =
   StyleRangeAbsolute styleOffset (styleLength + styleOffset) style
 
+-- original: <li><pre><code>asdas</code></pre>d</li>
+-- -1: <li><pre><code>asdasd</li>
+
 erToEra :: Map Text Entity -> EntityRange -> Maybe EntityRangeAbsolute
 erToEra entityMap EntityRange{..} =
       EntityRangeAbsolute entityOffset (entityOffset + entityLength)
@@ -332,7 +337,6 @@ splitOverlaps' (x : xs) =
         overlapT = partition (checkOverlapTR x) xs
         overlaps = fst overlapT
         nonOverlaps = snd overlapT
-        -- splitPoint = trStop x
         splits = concatMap (splitOverlap' x) overlaps
         merged = sortBy trCompare $ splits ++ nonOverlaps
 
@@ -399,7 +403,7 @@ styleToTag Open Strikethrough = "<del>"
 styleToTag Close Strikethrough = "</del>"
 styleToTag Open CodeStyle = "<pre><code>"
 styleToTag Close CodeStyle = "</code></pre>"
-styleToTag Open Underline = "<ul>"
+styleToTag Open Underline = "<u>"
 styleToTag Close Underline = "</u>"
 
 taToTupleGetter :: TagAction -> (a, a) -> a
@@ -431,13 +435,28 @@ drainTags' xs n c = do
         sortedOpen = reverse open
         sortedClose = reverse close
 
-appendBlockContent' :: [TagRange] -> Text -> BB.BufferBuilder ()
-appendBlockContent' xs t = do
-  _ <- ofoldlM (\n c -> drainTags' xs n c) 0 t
-  return ()
+getFinalTagRanges :: [TagRange] -> Text -> [TagRange]
+getFinalTagRanges trXs t =
+  filter (\tr -> trStop tr == textLength) trXs
+  where textLength = fromIntegral (T.length t)
 
-buildBlock' :: Map Text Entity -> Block -> BB.BufferBuilder ()
-buildBlock' entityMap Block{..} = do
+foldBlockContent :: [TagRange] -> Text -> BB.BufferBuilder ()
+foldBlockContent xs t = do
+  void $ ofoldlM (\n c -> drainTags' xs n c) 0 t
+  traverse_ (addTag' Close) (getFinalTagRanges xs t)
+
+appendBlockContent' :: [TagRange] -> Text -> BB.BufferBuilder ()
+appendBlockContent' xs t =
+  if T.null t
+  then BB.appendBS "<br/>"
+  else foldBlockContent xs t
+
+-- appendBlockContent' [StyleTR (StyleRangeAbsolute {sraStart = 0, sraStop = 6, sraStyle = CodeStyle})] "asdasd"
+-- foldBlockContent [StyleTR (StyleRangeAbsolute {sraStart = 0, sraStop = 6, sraStyle = CodeStyle})] "asdasd"
+-- BB.runBufferBuilder $ foldBlockContent [StyleTR (StyleRangeAbsolute {sraStart = 0, sraStop = 6, sraStyle = CodeStyle})] "asdasd"
+
+buildBlock :: Map Text Entity -> Block -> BB.BufferBuilder ()
+buildBlock entityMap Block{..} = do
   BB.appendBS open
   appendBlockContent' absoluteRanges blockText
   BB.appendBS close
@@ -450,8 +469,8 @@ buildBlock' entityMap Block{..} = do
 
 blockTypeTags :: BlockType -> (BS.ByteString, BS.ByteString)
 blockTypeTags Unstyled          = ("<p>", "</p>")
-blockTypeTags UnorderedListItem = ("<ul>", "</ul>")
-blockTypeTags OrderedListItem   = ("<ol>", "</ol>")
+blockTypeTags UnorderedListItem = ("<li>", "</li>")
+blockTypeTags OrderedListItem   = ("<li>", "</li>")
 blockTypeTags Blockquote        = ("<blockquote>", "</blockquote>")
 blockTypeTags HeaderOne         = ("<h1>", "</h1>")
 blockTypeTags HeaderTwo         = ("<h2>", "</h2>")
@@ -479,14 +498,92 @@ checkOverlapTR :: TagRange -> TagRange -> Bool
 checkOverlapTR tr tr' =
   overlapNotDominated (rangeTupleTR tr) (rangeTupleTR tr')
 
+-- data ActiveBlockType =
+--     ActiveUnordered Natural
+--   | ActiveOrdered Natural
+--   deriving (Eq, Show)
 
-buildContent :: ContentRaw -> BB.BufferBuilder ()
-buildContent ContentRaw{..} =
-  traverse_ (buildBlock' entityMap) blocks
+-- getActiveDepth :: ActiveBlockType -> Natural
+-- getActiveDepth (ActiveUnordered nat) = nat
+-- getActiveDepth (ActiveOrdered nat) = nat
+
+-- getActiveTags :: ActiveBlockType -> (BS.ByteString, BS.ByteString)
+-- getActiveTags (ActiveUnordered _) = ("</ul>", "<ul>")
+-- getActiveTags (ActiveOrdered _) = ("</ol>", "<ol>")
+
+-- blockToActive :: ActiveBlockType -> [ActiveBlockType]
+-- blockToActive Block{..} xs = case blockType of
+--   UnorderedListItem -> ActiveUnordered blockDepth : xs
+--   OrderedListItem -> ActiveOrdered blockDepth : xs
+--   _ -> xs
+
+-- pairBarrier :: ActiveBlockType -> ActiveBlockType -> (BS.ByteString, BS.ByteString)
+-- pairBarrier prev next =
+--   case compare prevDepth nextDepth of
+--     EQ -> (fst (getActiveTags prev), snd (getActiveTags next))
+--     LT -> ("", snd (getActiveTags next))
+--     GT -> (fst (getActiveTags prev), "")
+--   where prevDepth = getActiveDepth prev
+--         nextDepth = getActiveDepth next
+
+-- data BlockDepthTraversal =
+--     Same
+--   | Up
+--   | Down
+--   deriving (Eq, Show)
+
+-- blockDepthChange :: Natural -> Block -> BlockDepthTraversal
+-- blockDepthChange prev next =
+--   case compare (blockDepth prev) (blockDepth next) of
+--     EQ -> Same -- </ol><ul>
+--     LT -> Down -- <ul>
+--     GT -> Up -- </ol>
+
+-- blockBarrier :: Block -> Block -> (BS.ByteString, BS.ByteString)
+-- blockBarrier prev next = undefined
+
+-- blockStartEnd :: [ActiveBlockType]
+--               -> ActiveBlockType
+--               -> (BS.ByteString, [ActiveBlockType])
+-- blockStartEnd [] next = ( snd (getActiveTags next)
+--                         , [next] )
+-- blockStartEnd all@(prev:xs) next =
+--   case compare prevDepth nextDepth of
+--     -- </ol><ul>
+--     EQ -> ( BS.concat [fst (getActiveTags prev), snd (getActiveTags next)]
+--           , next : xs )
+--     -- <ul>
+--     LT -> ( BS.concat [snd (getActiveTags next)]
+--           , next : all )
+--     -- </ol>
+--     GT -> ( BS.concat [fst (getActiveTags prev), snd (getActiveTags next)]
+--           , next : xs )
+--   where prevDepth = getActiveDepth prev
+--         nextDepth = getActiveDepth next
+
+-- blah :: [a] -> BS.ByteString
+-- blah (x:xs) = ""
+-- blah [] = ""
+-- blah [] = ""
+
+-- data BlockContext = { activeTypes :: S.Set ActiveBlockType
+--                     , previousBlock ::
+
+buildContent' :: ContentRaw -> BB.BufferBuilder ()
+buildContent' ContentRaw{..} =
+  void $ ofoldlM (\s block -> buildBlock entityMap block >> return s) S.empty blocks
 
 renderHtml :: ContentRaw -> BS.ByteString
 renderHtml cr =
-  BB.runBufferBuilder (buildContent cr)
+  BB.runBufferBuilder (buildContent' cr)
+
+-- buildContent :: ContentRaw -> BB.BufferBuilder ()
+-- buildContent ContentRaw{..} =
+--   ofoldlM (\_ block -> buildBlock entityMap block) () blocks
+
+-- renderHtml :: ContentRaw -> BS.ByteString
+-- renderHtml cr =
+--   BB.runBufferBuilder (buildContent cr)
 
 renderPlainText :: ContentRaw -> Text
 renderPlainText cr = T.unlines fragments

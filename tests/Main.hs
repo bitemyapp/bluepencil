@@ -5,6 +5,8 @@
 
 module Main where
 
+import qualified Data.BufferBuilder   as BB
+
 import BluePencil
 import Data.Aeson
 import Data.Aeson.Types (parseEither)
@@ -30,17 +32,23 @@ main = hspec $ do
       renderPlainText emptyContent `shouldBe` "\n"
     it "should render example content" $ do
       renderPlainText exampleContent `shouldBe` "bold italic bolditalic\nstrikethrough\ncode example\nunordered list item\nordered list item\nblockquote\nhttp://bitemyapp.com\nHeading large\nHeading medium\nHeading small\nCode block\n\n"
+
   describe "Valid JSON inputs should parse correctly" $ do
     it "Empty JSON should produce empty content" $ do
       decode emptyJSON `shouldBe` Just emptyContent
     it "Example JSON should produce the example content" $ do
       decode exampleJSON `shouldBe` Just exampleContent
+
   describe "Rendering raw content value should produce the correct HTML" $ do
     it "contentHtmlTest should be the correct HTML" $ do
       renderHtml contentHtmlTest `shouldBe` expectedHtml
+    it "Style ranges matching end of text should include close tags" $ do
+      (renderHtml <$> (decode styleTextEdgeJSON)) `shouldBe` (Just "<li><pre><code>asdasd</code></pre></li>\n")
+
   describe "JSON instances" $ do
     it "should have isomorphism for small, simple examples" $ do
       decode (encode emptyContent) `shouldBe` Just emptyContent
+
   describe "JSON instances should have isomorphism" $ do
       propJSON (Proxy :: Proxy BlockType)
       propJSON (Proxy :: Proxy EntityRange)
@@ -260,6 +268,154 @@ expectedHtml :: BS.ByteString
 expectedHtml = [r|<p><b>bold <em>bolditalic</em></b><em> <a href="http://google.com/">GoogleURI</a> italic</em> <b>boldAgain</b> plain</p>
 <p>Second block</p>
 |]
+
+renderTest = traverse BS.putStrLn (renderHtml <$> (decode exampleListJSON))
+
+renderTest' = traverse BS.putStrLn (renderHtml <$> (decode styleTextEdgeJSON))
+
+testContent :: ContentRaw
+testContent = let (Just c) = decode exampleListJSON in c
+
+codeBlockTest = (V.!) (blocks testContent) 4
+
+codeBlockRender = BB.runBufferBuilder $ buildBlock (entityMap testContent) codeBlockTest
+
+styleTextEdgeJSON :: BL8.ByteString
+styleTextEdgeJSON = [r|
+{
+    "entityMap": {},
+    "blocks": [
+    {
+        "key": "1uj9r",
+        "text": "asdasd",
+        "type": "ordered-list-item",
+        "depth": 2,
+        "inlineStyleRanges": [{
+            "offset": 0,
+            "length": 6,
+            "style": "CODE"
+        }],
+        "entityRanges": []
+    }]
+}
+|]
+
+exampleListJSON :: BL8.ByteString
+exampleListJSON = [r|
+{
+    "entityMap": {},
+    "blocks": [{
+        "key": "4u8mj",
+        "text": "first",
+        "type": "unordered-list-item",
+        "depth": 0,
+        "inlineStyleRanges": [],
+        "entityRanges": []
+    }, {
+        "key": "crste",
+        "text": "second",
+        "type": "unordered-list-item",
+        "depth": 0,
+        "inlineStyleRanges": [],
+        "entityRanges": []
+    }, {
+        "key": "limg",
+        "text": "first nest",
+        "type": "unordered-list-item",
+        "depth": 1,
+        "inlineStyleRanges": [],
+        "entityRanges": []
+    }, {
+        "key": "6jrrb",
+        "text": "second nest",
+        "type": "ordered-list-item",
+        "depth": 2,
+        "inlineStyleRanges": [],
+        "entityRanges": []
+    }, {
+        "key": "1uj9r",
+        "text": "asdasd",
+        "type": "ordered-list-item",
+        "depth": 2,
+        "inlineStyleRanges": [{
+            "offset": 0,
+            "length": 6,
+            "style": "CODE"
+        }],
+        "entityRanges": []
+    }, {
+        "key": "9gtda",
+        "text": "",
+        "type": "unstyled",
+        "depth": 0,
+        "inlineStyleRanges": [],
+        "entityRanges": []
+    }, {
+        "key": "5k4tu",
+        "text": "revert nesting",
+        "type": "unordered-list-item",
+        "depth": 0,
+        "inlineStyleRanges": [],
+        "entityRanges": []
+    }, {
+        "key": "evi9r",
+        "text": "",
+        "type": "unstyled",
+        "depth": 0,
+        "inlineStyleRanges": [],
+        "entityRanges": []
+    }, {
+        "key": "9jlrk",
+        "text": "separate list",
+        "type": "unordered-list-item",
+        "depth": 0,
+        "inlineStyleRanges": [],
+        "entityRanges": []
+    }, {
+        "key": "b0l76",
+        "text": "",
+        "type": "unstyled",
+        "depth": 0,
+        "inlineStyleRanges": [],
+        "entityRanges": []
+    }]
+}
+|]
+
+exampleListHtml :: BS.ByteString
+exampleListHtml = [r|
+<ul>
+  <li>first</li>
+  <li>second
+    <ul>
+      <li>first nest
+        <ol>
+          <li>second nest</li>
+          <li><code>asdasd</code></li>
+        </ol>
+      </li>
+    </ul>
+  </li>
+</ul>
+<p><br></p>
+<ul>
+  <li>revert nesting</li>
+</ul>
+<p><br></p>
+<ul>
+  <li>separate list</li>
+</ul>
+<p><br></p>
+|]
+
+-- <ul><li>first</li>
+-- <li>second</li></ul>
+-- <p><br/></p>
+-- <ul><li>blah</li></ul>
+-- <p><br/></p>
+-- <li>third</li>
+-- <li>fourth</li>
+-- <p><br/></p>
 
 -- ApproxEq a,
 -- ==~
